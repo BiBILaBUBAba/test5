@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>90s Retro Anime Style - Glitch & Flow</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #050011; /* 深紫黑背景 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        canvas {
+            box-shadow: 0 0 30px rgba(255, 0, 255, 0.3);
+            max-width: 100%;
+            max-height: 100%;
+        }
+    </style>
+    <!-- 引入 p5.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+
+<script>
+    // --- 全局变量 ---
+    let particles = [];
+    const numParticles = 800; // 粒子数量，模拟头发和光效
+    let noiseScale = 0.02;
+    let zOff = 0;
+    
+    // 角色状态
+    let blinkState = 0; // 0:睁眼, 1:闭眼
+    let blinkTimer = 0;
+    let nextBlinkTime = random(100, 300);
+    let eyeOffset = { x: 0, y: 0 }; // 眼神移动
+    let mouthOpen = 0; // 嘴巴张开程度
+    
+    // 故障特效参数
+    let glitchIntensity = 0;
+    let lastGlitchTime = 0;
+
+    function setup() {
+        // 16:9 画幅，高分辨率模拟 4K 感 (这里使用 1280x720 以保证性能，可改为 1920x1080)
+        createCanvas(1280, 720);
+        colorMode(HSB, 360, 100, 100, 100);
+        frameRate(60);
+        
+        // 初始化粒子
+        for (let i = 0; i < numParticles; i++) {
+            particles.push(new Particle());
+        }
+    }
+
+    function draw() {
+        // 1. 背景与基础氛围
+        background(260, 80, 10); // 深紫色背景
+        
+        // 2. 更新逻辑
+        updateCharacterLogic();
+        updateParticles();
+        
+        // 3. 绘制层级
+        // 为了模拟 RGB 分离，我们将主要绘制内容放在一个 buffer 或者直接绘制多次
+        // 这里为了性能和效果平衡，我们采用局部 RGB 偏移 + 整体 Glitch
+        
+        push();
+        // --- 模拟 RGB 分离 (Chromatic Aberration) ---
+        // 红色通道
+        blendMode(SCREEN);
+        drawScene(1, -2, 0); 
+        // 蓝色通道
+        drawScene(2, 2, 0);
+        // 绿色通道 (正常位置，作为基准)
+        drawScene(3, 0, 0);
+        pop();
+
+        // 4. 故障艺术特效 (Glitch)
+        applyGlitchEffect();
+
+        // 5. 文字层 (静态但带呼吸光)
+        drawTextOverlay();
+        
+        // 6. 全局发光叠加 (Bloom simulation)
+        applyBloom();
+        
+        // 更新时间偏移
+        zOff += 0.005;
+    }
+
+    // --- 核心绘制函数 ---
+    function drawScene(channel, offsetX, offsetY) {
+        push();
+        translate(width / 2 + offsetX, height / 2 + offsetY); // 中心坐标
+        
+        // 如果是红色或蓝色通道，降低透明度以混合
+        if (channel === 1 || channel === 2) {
+            tint(255, 50); 
+        } else {
+            tint(255, 100);
+        }
+
+        // A. 绘制粒子 (头发/光效) - 在人物后面
+        for (let p of particles) {
+            p.display();
+        }
+
+        // B. 绘制倒置少女
+        rotate(PI); // 倒置
+        drawGirl();
+
+        pop();
+    }
+
+    // --- 角色绘制 (赛璐璐风格) ---
+    function drawGirl() {
+        // 此时坐标系已旋转 PI (倒置)，(0,0) 是画布中心
+        
+        // 1. 头发后层 (深色阴影)
+        noStroke();
+        fill(280, 90, 20); 
+        beginShape();
+        for (let a = 0; a < TWO_PI; a += 0.1) {
+            let r = 220 + sin(a * 5 + frameCount * 0.05) * 20;
+            vertex(cos(a) * r, sin(a) * r);
+        }
+        endShape(CLOSE);
+
+        // 2. 脸部轮廓 (倒置椭圆)
+        fill(280, 30, 95); // 苍白肤色
+        ellipse(0, 0, 280, 340); 
+
+        // 3. 刘海 (程序化生成几缕头发)
+        fill(280, 80, 30); // 深紫发色
+        for (let i = -2; i <= 2; i++) {
+            let xBase = i * 40;
+            let sway = sin(frameCount * 0.05 + i) * 10;
+            beginShape();
+            vertex(xBase - 20, -150);
+            bezierVertex(xBase - 30, -50, xBase + sway, 50, xBase, 150);
+            bezierVertex(xBase - sway, 50, xBase + 10, -50, xBase + 20, -150);
+            endShape(CLOSE);
+        }
+
+        // 4. 眼睛 (慵懒迷离)
+        drawEye(-70, 20); // 左眼 (视觉上的右)
+        drawEye(70, 20);  // 右眼 (视觉上的左)
+
+        // 5. 鼻子 (极简赛璐璐点)
+        fill(280, 40, 80);
+        ellipse(0, 0, 5, 10);
+
+        // 6. 嘴巴 (呼吸感微张)
+        drawMouth(0, 60);
+        
+        // 7. 腮红 (半透明)
+        fill(320, 60, 100, 30);
+        ellipse(-90, 40, 60, 30);
+        ellipse(90, 40, 60, 30);
+    }
+
+    function drawEye(x, y) {
+        push();
+        translate(x, y);
+        
+        // 眼白
+        fill(280, 10, 98);
+        noStroke();
+        // 眼睑形状
+        beginShape();
+        vertex(-40, 0);
+        bezierVertex(-20, -25, 20, -25, 40, 0); // 上眼睑
+        bezierVertex(20, 15, -20, 15, -40, 0);  // 下眼睑
+        endShape(CLOSE);
+        
+        // 睫毛 (粗线条)
+        stroke(280, 90, 10);
+        strokeWeight(4);
+        noFill();
+        beginShape();
+        vertex(-42, 0);
+        bezierVertex(-20, -28, 20, -28, 42, 0);
+        endShape();
+        // 下睫毛
+        strokeWeight(1);
+        beginShape();
+        vertex(-35, 2);
+        bezierVertex(-10, 12, 10, 12, 35, 2);
+        endShape();
+
+        // 虹膜 (渐变)
+        if (blinkState === 0) {
+            // 瞳孔位置随眼神移动
+            let px = eyeOffset.x * 5;
+            let py = eyeOffset.y * 5;
+            
+            // 外圈
+            fill(280, 90, 40); 
+            ellipse(px, py, 35, 45);
+            // 内圈
+            fill(320, 80, 60);
+            ellipse(px, py, 25, 35);
+            // 瞳孔
+            fill(0, 0, 10);
+            ellipse(px, py, 10, 15);
+            
+            // 高光 (米山舞式大高光)
+            fill(0, 0, 100, 90);
+            ellipse(px - 8, py - 10, 8, 8);
+            fill(0, 0, 100, 60);
+            ellipse(px + 5, py + 8, 4, 4);
+        } else {
+            // 闭眼线条
+            stroke(280, 90, 10);
+            strokeWeight(3);
+            line(-35, 0, 35, 0);
+        }
+        pop();
+    }
+
+    function drawMouth(x, y) {
+        push();
+        translate(x, y);
+        noStroke();
+        fill(340, 70, 80); // 唇色
+        
+        // 呼吸感：mouthOpen 在 0 到 1 之间正弦变化
+        let h = 5 + mouthOpen * 8; 
+        
+        beginShape();
+        vertex(-15, 0);
+        bezierVertex(-5, h, 5, h, 15, 0); // 下唇
+        bezierVertex(5, -h/2, -5, -h/2, -15, 0); // 上唇
+        endShape(CLOSE);
+        
+        // 唇彩高光
+        fill(0, 0, 100, 150);
+        ellipse(0, h/2, 10, 3);
+        pop();
+    }
+
+    // --- 粒子系统 (液态头发/光效) ---
+    class Particle {
+        constructor() {
+            this.reset();
+        }
+        
+        reset() {
+            // 从中心周围生成
+            this.pos = p5.Vector.random2D().mult(random(50, 200));
+            this.pos.add(width/2, height/2); // 初始基于屏幕中心，但在 drawScene 中会相对转换
+            // 为了简化，我们在 drawScene 中已经 translate 了，所以这里粒子坐标应该是相对于中心的
+            this.pos = p5.Vector.random2D().mult(random(100, 300));
+            
+            this.vel = createVector(0, 0);
+            this.acc = createVector(0, 0);
+            this.size = random(2, 8);
+            // 霓虹紫/粉色系
+            this.hue = random(260, 320); 
+            this.life = random(100, 255);
+        }
+        
+        update() {
+            // 流场力
+            let n = noise(this.pos.x * 0.005, this.pos.y * 0.005, zOff);
+            let angle = n * TWO_PI * 2;
+            let force = p5.Vector.fromAngle(angle);
+            force.mult(0.5);
+            this.acc.add(force);
+            
+            this.vel.add(this.acc);
+            this.vel.limit(2);
+            this.pos.add(this.vel);
+            this.acc.mult(0);
+            
+            this.life -= 1;
+            if (this.life < 0 || this.pos.mag() > 400) {
+                this.reset();
+                this.life = 255;
+            }
+        }
+        
+        display() {
+            this.update();
+            noStroke();
+            // 发光效果
+            fill(this.hue, 80, 100, this.life / 255 * 50); 
+            ellipse(this.pos.x, this.pos.y, this.size);
+        }
+    }
+    
+    function updateParticles() {
+        // 粒子逻辑在 display 中调用 update
+    }
+
+    // --- 逻辑更新 ---
+    function updateCharacterLogic() {
+        // 1. 眨眼逻辑
+        blinkTimer++;
+        if (blinkState === 0) {
+            if (blinkTimer > nextBlinkTime) {
+                blinkState = 1; // 开始闭眼
+                blinkTimer = 0;
+            }
+        } else {
+            if (blinkTimer > 10) { // 闭眼持续 10 帧
+                blinkState = 0;
+                blinkTimer = 0;
+                nextBlinkTime = random(100, 300);
+            }
+        }
+        
+        // 2. 眼神移动 (缓慢)
+        eyeOffset.x = lerp(eyeOffset.x, sin(frameCount * 0.01) * 0.5, 0.05);
+        eyeOffset.y = lerp(eyeOffset.y, cos(frameCount * 0.013) * 0.2, 0.05);
+        
+        // 3. 嘴巴呼吸
+        mouthOpen = map(sin(frameCount * 0.05), -1, 1, 0, 1);
+        
+        // 4. 故障触发 (每3秒约 180 帧)
+        if (frameCount - lastGlitchTime > 180 && random(1) < 0.05) {
+            glitchIntensity = random(10, 30);
+            lastGlitchTime = frameCount;
+        } else {
+            glitchIntensity = lerp(glitchIntensity, 0, 0.1);
+        }
+    }
+
+    // --- 故障特效 ---
+    function applyGlitchEffect() {
+        if (glitchIntensity > 0.5) {
+            let sliceHeight = random(10, 50);
+            let numSlices = floor(glitchIntensity);
+            
+            for (let i = 0; i < numSlices; i++) {
+                let y = random(height);
+                let shift = random(-20, 20);
+                // 复制屏幕的一部分并偏移
+                copy(0, y, width, sliceHeight, shift, y, width, sliceHeight);
+            }
+            
+            // 偶尔颜色反转
+            if (random(1) < 0.3) {
+                filter(INVERT);
+            }
+        }
+    }
+    
+    // --- 发光叠加 ---
+    function applyBloom() {
+        // 简单的全屏柔光叠加
+        blendMode(ADD);
+        fill(280, 80, 100, 5); // 极低透明度的紫色
+        rect(0, 0, width, height);
+        blendMode(BLEND);
+    }
+
+    // --- 文字层 ---
+    function drawTextOverlay() {
+        push();
+        // 恢复正向坐标系
+        // 注意：之前的 drawScene 都有 push/pop，所以这里不需要额外旋转回来，除非我们在 drawScene 里没 pop
+        // 但为了保险，我们直接在屏幕坐标绘制
+        
+        textAlign(RIGHT, TOP);
+        textSize(40);
+        textStyle(BOLD);
+        
+        // 文字呼吸发光
+        let glow = map(sin(frameCount * 0.05), -1, 1, 100, 255);
+        drawingContext.shadowBlur = 20;
+        drawingContext.shadowColor = `hsla(280, 100%, 70%, ${glow/255})`;
+        
+        fill(0, 0, 100, 200); // 白色半透明
+        // 竖排文字需要手动换行或逐个字符绘制
+        let textStr = "You are mine\n相思相愛";
+        // 简单处理：右上角
+        text(textStr, width - 50, 50);
+        
+        pop();
+    }
+
+</script>
+</body>
+</html>
